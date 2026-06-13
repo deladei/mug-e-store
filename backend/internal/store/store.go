@@ -18,13 +18,14 @@ import (
 // (e.g. ErrNotFound -> 404, ErrEmailTaken -> 409). Keeping them here means the
 // HTTP layer never inspects raw driver errors.
 var (
-	ErrNotFound          = errors.New("store: not found")
-	ErrEmailTaken        = errors.New("store: email already registered")
-	ErrDuplicate         = errors.New("store: duplicate")
-	ErrDuplicateOrder    = errors.New("store: duplicate order (idempotency key reused)")
-	ErrEmptyCart         = errors.New("store: cart is empty")
-	ErrUnavailable       = errors.New("store: item is unavailable")
-	ErrInvalidTransition = errors.New("store: invalid status transition")
+	ErrNotFound           = errors.New("store: not found")
+	ErrEmailTaken         = errors.New("store: email already registered")
+	ErrDuplicate          = errors.New("store: duplicate")
+	ErrDuplicateOrder     = errors.New("store: duplicate order (idempotency key reused)")
+	ErrEmptyCart          = errors.New("store: cart is empty")
+	ErrUnavailable        = errors.New("store: item is unavailable")
+	ErrInvalidTransition  = errors.New("store: invalid status transition")
+	ErrInsufficientPoints = errors.New("store: insufficient loyalty points to redeem")
 )
 
 // pgUniqueViolation is the SQLSTATE code Postgres returns on a UNIQUE breach.

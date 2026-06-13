@@ -67,6 +67,10 @@ type CheckoutParams struct {
 	Phone              string
 	DeliveryFeePesewas int64
 	IdempotencyKey     string
+	// RedeemPoints is how many loyalty points the customer wants to spend on this
+	// order (0 = none). The discount and the points actually consumed are decided
+	// by domain.Redemption inside the checkout transaction.
+	RedeemPoints int64
 }
 
 // Checkout turns the user's cart into an order in a single transaction: it
@@ -108,7 +112,34 @@ func (s *Store) Checkout(ctx context.Context, p CheckoutParams) (*Order, error) 
 		deliveryFee = p.DeliveryFeePesewas
 	}
 	subtotal := view.SubtotalPesewas
+
+	// Loyalty redemption. The balance is read INSIDE this transaction, and only
+	// after taking a row lock on the user, so two concurrent checkouts cannot
+	// both spend the same points (the double-spend trap): the second blocks here
+	// until the first commits, then sees the reduced balance. Same FOR UPDATE
+	// discipline TransitionOrder uses on the order row.
 	discount := int64(0)
+	pointsSpent := int64(0)
+	if p.RedeemPoints != 0 {
+		if _, err := tx.ExecContext(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, p.UserID); err != nil {
+			return nil, fmt.Errorf("store: locking user for redemption: %w", err)
+		}
+		var balance int64
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COALESCE(SUM(delta), 0) FROM loyalty_ledger WHERE user_id = $1`, p.UserID).
+			Scan(&balance); err != nil {
+			return nil, fmt.Errorf("store: reading loyalty balance: %w", err)
+		}
+		d, spent, err := domain.Redemption(p.RedeemPoints, balance, subtotal)
+		switch {
+		case errors.Is(err, domain.ErrInsufficientPoints):
+			return nil, ErrInsufficientPoints
+		case err != nil:
+			return nil, fmt.Errorf("store: redemption: %w", err)
+		}
+		discount, pointsSpent = d, spent
+	}
+
 	total := subtotal + deliveryFee - discount
 
 	order := &Order{
@@ -157,6 +188,18 @@ func (s *Store) Checkout(ctx context.Context, p CheckoutParams) (*Order, error) 
 			return nil, fmt.Errorf("store: inserting order line: %w", err)
 		}
 		order.Lines = append(order.Lines, ol)
+	}
+
+	// The redemption spend is a negative ledger row written in the SAME
+	// transaction as the order, so the points are debited atomically with the
+	// order's creation — there is no window where one exists without the other.
+	if pointsSpent > 0 {
+		const insRedeem = `
+			INSERT INTO loyalty_ledger (user_id, order_id, delta, reason)
+			VALUES ($1, $2, $3, 'redeem_at_checkout')`
+		if _, err := tx.ExecContext(ctx, insRedeem, p.UserID, order.ID, -pointsSpent); err != nil {
+			return nil, fmt.Errorf("store: writing redemption ledger entry: %w", err)
+		}
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM cart_lines WHERE cart_id = $1`, cartID); err != nil {
@@ -294,12 +337,13 @@ func (s *Store) TransitionOrder(ctx context.Context, orderID int64, to domain.St
 		fulfilment domain.Fulfilment
 		userID     int64
 		subtotal   int64
+		discount   int64
 	)
 	const lockQ = `
-		SELECT status, fulfilment, user_id, subtotal_pesewas
+		SELECT status, fulfilment, user_id, subtotal_pesewas, discount_pesewas
 		FROM orders WHERE id = $1 FOR UPDATE`
 	switch err := tx.QueryRowContext(ctx, lockQ, orderID).
-		Scan(&from, &fulfilment, &userID, &subtotal); {
+		Scan(&from, &fulfilment, &userID, &subtotal, &discount); {
 	case errors.Is(err, sql.ErrNoRows):
 		return nil, ErrNotFound
 	case err != nil:
@@ -339,6 +383,22 @@ func (s *Store) TransitionOrder(ctx context.Context, orderID int64, to domain.St
 			if _, err := tx.ExecContext(ctx, insLedger, userID, orderID, points); err != nil {
 				return nil, fmt.Errorf("store: crediting loyalty: %w", err)
 			}
+		}
+	}
+
+	// Cancelling an order that redeemed points refunds them with a compensating
+	// positive ledger entry (PRD §S1), so points spent on an order that never
+	// completes are not lost — this also covers checkout's cancelDangling path
+	// when Paystack initialization fails. The points debited at checkout equal
+	// the discount in pesewas (1 point = 1 pesewa), so the refund is the stored
+	// discount. Cancelled is terminal and the no-op above short-circuits a repeat
+	// cancel, so the refund is written at most once.
+	if to == domain.StatusCancelled && discount > 0 {
+		const insRefund = `
+			INSERT INTO loyalty_ledger (user_id, order_id, delta, reason)
+			VALUES ($1, $2, $3, 'refund_on_cancel')`
+		if _, err := tx.ExecContext(ctx, insRefund, userID, orderID, discount/domain.PesewasPerPoint); err != nil {
+			return nil, fmt.Errorf("store: refunding redeemed points: %w", err)
 		}
 	}
 

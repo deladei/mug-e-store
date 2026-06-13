@@ -60,14 +60,16 @@ Build this as an interceptor once. Every screen below assumes it exists.
   - *Rate limited* — `429 rate_limited` after 10 attempts/minute from one IP; show "too many attempts, wait a moment."
 
 ### 2.5 Checkout
-- **Powered by:** `POST /checkout {fulfilment, address?, phone?, idempotency_key?}`. **Auth:** Bearer.
-- **Send:** `fulfilment` is `"pickup"` or `"delivery"`. For delivery, `address` and `phone` are **required** (backend rejects otherwise). Generate a UUID `idempotency_key` per checkout attempt and reuse it on retry of the *same* attempt.
-- **Receives:** `201 {order, authorization_url}`.
+- **Powered by:** `POST /checkout {fulfilment, address?, phone?, idempotency_key?, points_to_redeem?}`. **Auth:** Bearer.
+- **Send:** `fulfilment` is `"pickup"` or `"delivery"`. For delivery, `address` and `phone` are **required** (backend rejects otherwise). Generate a UUID `idempotency_key` per checkout attempt and reuse it on retry of the *same* attempt. `points_to_redeem` is optional (omit or `0` for none) — see loyalty below.
+- **Receives:** `201 {order, authorization_url}`. The returned `order` carries `discount_pesewas` (points applied) and the discounted `total_pesewas`; that total is exactly what Paystack will charge.
 - **Then:** redirect the browser to `authorization_url` (Paystack's hosted page). Do **not** build a card form — card entry is entirely on Paystack's domain.
 - **States to build:**
   - *Delivery fee* — when the user toggles to delivery, show the flat fee (the order's `delivery_fee_pesewas`) added to the total. The fee is a backend config value; read it from the returned order, do not hardcode it.
+  - *Points applied* — if `points_to_redeem` was sent, show `discount_pesewas` as a line and the reduced `total_pesewas`.
   - *Empty cart* — `400 empty_cart`.
   - *Item unavailable* — `409 unavailable`; send the user back to the cart.
+  - *Not enough points* — `409 insufficient_points` if `points_to_redeem` exceeds the customer's balance.
   - *Duplicate* — `409 duplicate_order` if the same idempotency key was already used.
   - *Payment could not start* — `502 payment_init_failed`; the order was auto-cancelled, tell the user to try again.
 
@@ -85,8 +87,9 @@ Build this as an interceptor once. Every screen below assumes it exists.
 
 ### 2.8 Profile / loyalty
 - **Powered by:** `GET /me/loyalty`. **Auth:** Bearer.
-- **Receives:** `{balance, ledger: [{order_id, delta, reason, created_at}]}`. `balance` is total points; positive `delta` is earned, negative is redeemed.
-- **States:** *zero balance* for new customers. **Note for the frontend:** redemption (spending points at checkout) is **not yet a backend feature** — do not build a "redeem points" control until that endpoint exists. Display balance and history only for now.
+- **Receives:** `{balance, ledger: [{order_id, delta, reason, created_at}]}`. `balance` is total points; positive `delta` is earned (`earn_on_completion`) or refunded (`refund_on_cancel`), negative is redeemed (`redeem_at_checkout`).
+- **States:** *zero balance* for new customers.
+- **Redeeming at checkout (now live):** points are worth **1 pesewa each** (100 points = GHS 1). Send `points_to_redeem` on `POST /checkout` (§2.5). The discount is **capped at the subtotal** — points reduce the cost of the coffee, never the delivery fee — so the most a customer can usefully redeem is `min(balance, subtotal_pesewas)`; compute that to bound the control and show the resulting `discount_pesewas`/`total_pesewas` from the returned order. Over-redeeming the balance returns `409 insufficient_points`. If a redeemed order is later cancelled, the points are automatically refunded (a `refund_on_cancel` ledger entry), so the balance self-heals.
 
 ---
 
