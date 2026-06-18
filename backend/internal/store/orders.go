@@ -374,9 +374,16 @@ func (s *Store) TransitionOrder(ctx context.Context, orderID int64, to domain.St
 	}
 
 	// Loyalty is earned only on completion: 1 point per whole GHS of subtotal.
+	// Guests (passwordless S4 accounts) earn nothing — they can never log back in
+	// to spend points, so crediting them would only litter the ledger with rows
+	// no one can ever read or use.
 	if to == domain.StatusCompleted {
+		var isGuest bool
+		if err := tx.QueryRowContext(ctx, `SELECT is_guest FROM users WHERE id = $1`, userID).Scan(&isGuest); err != nil {
+			return nil, fmt.Errorf("store: reading user for loyalty earn: %w", err)
+		}
 		points := subtotal / 100
-		if points > 0 {
+		if points > 0 && !isGuest {
 			const insLedger = `
 				INSERT INTO loyalty_ledger (user_id, order_id, delta, reason)
 				VALUES ($1, $2, $3, 'earn_on_completion')`

@@ -50,8 +50,9 @@ Build this as an interceptor once. Every screen below assumes it exists.
   - Every mutation returns the **full updated cart**, so the frontend can replace its state from the response rather than re-fetching.
 - **Auth gate:** all cart calls need a token. A not-logged-in user tapping "Add" should be routed to auth first (§2.4), then returned.
 
-### 2.4 Auth (login / register)
+### 2.4 Auth (login / register / guest)
 - **Powered by:** `POST /auth/register {name, email, phone, password}` or `POST /auth/login {email, password}`. **Auth:** none (this is where it begins).
+- **Guest checkout:** `POST /auth/guest {name?, phone?}` mints a passwordless guest session so a shopper can order without creating an account. The body is **optional** — both fields may be omitted (a fully anonymous guest shows as "Guest"); the form should still collect `name`/`phone` so staff have someone to call out and a number to reach. **Auth:** none (rate limited). It returns the **same** `{access_token, user, refresh cookie}` shape as login, so every downstream call (cart, `/checkout`, order tracking, history) is identical to a logged-in customer — no special-casing in the client. Caveats: a guest **cannot log in later** (it has no password) and **earns no loyalty points**, so don't show a "log in to your guest account" or points affordance in the guest flow. The checkout contract is unchanged — the order's own `address`/`phone` still come from `POST /checkout`.
 - **Receives:** `{access_token, user: {id, name, email, phone, role, created_at}}` + refresh cookie set.
 - **States to build:**
   - *Validation* — register returns `400 validation` if password < 8 chars or email malformed; surface inline.
@@ -150,7 +151,7 @@ Build this as an interceptor once. Every screen below assumes it exists.
 | Endpoint group | Auth method |
 |---|---|
 | `/categories`, `/items*` (read) | none |
-| `/auth/register`, `/auth/login` | none (rate limited) |
+| `/auth/register`, `/auth/login`, `/auth/guest` | none (rate limited) |
 | `/auth/refresh`, `/auth/logout` | Cookie |
 | `/cart*`, `/checkout`, `/me/*`, `GET /orders/{id}` | Bearer |
 | `GET /orders/{id}/events` (SSE) | Query token (`?token=`) |

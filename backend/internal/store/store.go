@@ -75,7 +75,9 @@ func isUniqueViolation(err error) (constraint string, ok bool) {
 }
 
 // User mirrors a row of the users table. PasswordHash is the bcrypt hash and
-// must never be serialized to a client.
+// must never be serialized to a client. IsGuest is true for a passwordless
+// guest-checkout account (PRD S4): such a user behaves like any customer but can
+// never log in and earns no loyalty points.
 type User struct {
 	ID           int64
 	Name         string
@@ -83,18 +85,20 @@ type User struct {
 	Phone        string
 	PasswordHash string
 	Role         string
+	IsGuest      bool
 	CreatedAt    time.Time
 }
 
 // CreateUser inserts a user and fills in the generated id and created_at. A
 // duplicate email yields ErrEmailTaken. If role is empty, the column default
-// ('customer') applies.
+// ('customer') applies. IsGuest is written as given (false for the normal
+// register path; the guest-session handler sets it true).
 func (s *Store) CreateUser(ctx context.Context, u *User) error {
 	const q = `
-		INSERT INTO users (name, email, phone, password_hash, role)
-		VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'customer'))
+		INSERT INTO users (name, email, phone, password_hash, role, is_guest)
+		VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'customer'), $6)
 		RETURNING id, role, created_at`
-	err := s.db.QueryRowContext(ctx, q, u.Name, u.Email, u.Phone, u.PasswordHash, u.Role).
+	err := s.db.QueryRowContext(ctx, q, u.Name, u.Email, u.Phone, u.PasswordHash, u.Role, u.IsGuest).
 		Scan(&u.ID, &u.Role, &u.CreatedAt)
 	if c, ok := isUniqueViolation(err); ok && c == "users_email_key" {
 		return ErrEmailTaken
@@ -110,7 +114,7 @@ func (s *Store) CreateUser(ctx context.Context, u *User) error {
 // two are indistinguishable (no account enumeration).
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	const q = `
-		SELECT id, name, email, phone, password_hash, role, created_at
+		SELECT id, name, email, phone, password_hash, role, is_guest, created_at
 		FROM users WHERE email = $1`
 	return s.scanUser(s.db.QueryRowContext(ctx, q, email))
 }
@@ -118,14 +122,14 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error)
 // GetUserByID looks a user up by id (e.g. to resolve a token's uid claim).
 func (s *Store) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	const q = `
-		SELECT id, name, email, phone, password_hash, role, created_at
+		SELECT id, name, email, phone, password_hash, role, is_guest, created_at
 		FROM users WHERE id = $1`
 	return s.scanUser(s.db.QueryRowContext(ctx, q, id))
 }
 
 func (s *Store) scanUser(row *sql.Row) (*User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &u.PasswordHash, &u.Role, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &u.PasswordHash, &u.Role, &u.IsGuest, &u.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

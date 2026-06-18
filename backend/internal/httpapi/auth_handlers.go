@@ -86,6 +86,73 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, authResponse{AccessToken: access, User: toPublicUser(u)})
 }
 
+// guestEmailDomain namespaces the synthetic, non-routable emails minted for
+// guest accounts so they can never collide with a real user's address.
+const guestEmailDomain = "guest.coffeemug.local"
+
+type guestRequest struct {
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
+}
+
+// handleGuestSession mints a passwordless guest account and returns a normal
+// session (PRD S4). The guest IS a customer row — so the cart, checkout,
+// ownership, order tracking and history paths all work unchanged downstream —
+// but it carries is_guest=true, a synthetic unique email, and an unusable random
+// password hash, so no one can ever log in as it and it earns no loyalty points.
+//
+// name and phone are optional: the guest-checkout form collects them up front so
+// staff have a name to call out and a number to reach, but an anonymous guest
+// (no body) is allowed and shows as "Guest". The order's own address/phone still
+// come from POST /checkout, so the shared checkout contract is untouched.
+func (s *Server) handleGuestSession(w http.ResponseWriter, r *http.Request) {
+	var req guestRequest
+	if r.ContentLength != 0 && !decodeJSON(w, r, &req) {
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		req.Name = "Guest"
+	}
+
+	// A synthetic, unique, non-routable email keeps the UNIQUE/NOT NULL email
+	// contract intact without touching the schema; the token makes a collision
+	// statistically impossible.
+	token, err := auth.GenerateOpaqueToken()
+	if err != nil {
+		s.serverError(w, "generating guest id", err)
+		return
+	}
+	email := "guest-" + token + "@" + guestEmailDomain
+
+	// An unusable password: bcrypt of a fresh random secret no one holds. The
+	// constant-time login check can therefore never succeed for a guest, even if
+	// its synthetic email were somehow guessed.
+	secret, err := auth.GenerateOpaqueToken()
+	if err != nil {
+		s.serverError(w, "generating guest secret", err)
+		return
+	}
+	hash, err := auth.HashPassword(secret)
+	if err != nil {
+		s.serverError(w, "hashing guest secret", err)
+		return
+	}
+
+	u := &store.User{Name: req.Name, Email: email, Phone: strings.TrimSpace(req.Phone), PasswordHash: hash, IsGuest: true}
+	if err := s.store.CreateUser(r.Context(), u); err != nil {
+		s.serverError(w, "creating guest", err)
+		return
+	}
+
+	access, err := s.issueSession(w, r, u.ID)
+	if err != nil {
+		s.serverError(w, "issuing guest session", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, authResponse{AccessToken: access, User: toPublicUser(u)})
+}
+
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`

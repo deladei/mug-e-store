@@ -55,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	// Auth (public, rate-limited on the credential endpoints).
 	mux.Handle("POST /api/v1/auth/register", s.rateLimit(http.HandlerFunc(s.handleRegister)))
 	mux.Handle("POST /api/v1/auth/login", s.rateLimit(http.HandlerFunc(s.handleLogin)))
+	mux.Handle("POST /api/v1/auth/guest", s.rateLimit(http.HandlerFunc(s.handleGuestSession)))
 	mux.HandleFunc("POST /api/v1/auth/refresh", s.handleRefresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
 	mux.Handle("POST /api/v1/auth/password-reset/request", s.rateLimit(http.HandlerFunc(s.handlePasswordResetRequest)))
