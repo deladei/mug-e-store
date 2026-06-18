@@ -1,0 +1,22 @@
+# Secrets — never commit real env values
+.env
+.env.*
+!.env.example
+
+# Build output
+/bin/
+/api
+/seeduser
+*.exe
+
+# Test / coverage artifacts
+*.test
+*.out
+coverage.*
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
