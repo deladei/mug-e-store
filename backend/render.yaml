@@ -27,7 +27,11 @@ services:
                         # cannot run preDeployCommand (see below). Use `starter`
                         # for an always-on instance + automatic migrations.
     healthCheckPath: /api/v1/healthz
-    autoDeploy: true
+    # Off on purpose: deploys are triggered by the CI-gated Deploy workflow
+    # (.github/workflows/deploy.yml) via a Render Deploy Hook, so production only
+    # ever ships a commit whose tests passed. Flip to true to let Render
+    # auto-deploy on every push instead (then disable the Deploy workflow).
+    autoDeploy: false
 
     # Apply migrations before each deploy goes live. preDeployCommand runs in the
     # built image (which ships psql + /app/migrations) with the service's env.

@@ -78,6 +78,14 @@ Two caveats called out in the blueprint comments: Render's **free** Postgres
 expires after ~90 days (use `basic-256mb`+ for anything real), and free web
 services sleep on inactivity and cannot run `preDeployCommand`.
 
+**Deploy on merge.** `render.yaml` sets `autoDeploy: false`; production ships only
+via the CI-gated Deploy workflow (`.github/workflows/deploy.yml`), which fires a
+Render Deploy Hook **after CI passes on `main`**. One-time setup: Render → the
+`coffeemug-api` service → Settings → **Deploy Hook** → copy the URL → add it as
+the repo secret `RENDER_DEPLOY_HOOK_URL` (Settings → Secrets and variables →
+Actions). Until that secret is set, the Deploy workflow fails fast with a clear
+message. (To skip CI gating, flip `autoDeploy: true` and disable the workflow.)
+
 ## Payment integrity
 
 An order becomes `paid` **only** through the Paystack webhook, which must pass
