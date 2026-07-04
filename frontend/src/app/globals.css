@@ -1,4 +1,17 @@
+/* src/app/globals.css */
+
 @import "tailwindcss";
+
+/* Additional source folders for Tailwind v4 scanning */
+@source "../features/**/*.{ts,tsx}";
+@source "../contexts/**/*.{ts,tsx}";
+@source "../providers/**/*.{ts,tsx}";
+@source "../utils/**/*.{ts,tsx}";
+@source "../services/**/*.{ts,tsx}";
+@source "../constants/**/*.{ts,tsx}";
+
+/* Dark mode via class strategy (next-themes toggles 'dark' on <html>) */
+@variant dark (&:where(.dark, .dark *));
 
 :root {
   --background: #ffffff;
