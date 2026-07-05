@@ -33,11 +33,13 @@ services:
     # auto-deploy on every push instead (then disable the Deploy workflow).
     autoDeploy: false
 
-    # Apply migrations before each deploy goes live. preDeployCommand runs in the
-    # built image (which ships psql + /app/migrations) with the service's env.
-    # AVAILABLE ON PAID PLANS ONLY — on the free plan, delete this line and run
-    # the same loop once from the Render Shell after the first deploy.
-    preDeployCommand: "sh -c 'for f in $(ls /app/migrations/*.up.sql | sort); do echo applying $f; psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f \"$f\"; done'"
+    # Migrations on the FREE plan: Render rejects preDeployCommand outright, so
+    # after the database is provisioned apply them once from your own machine
+    # using the database's EXTERNAL connection string (Render dashboard →
+    # coffeemug-db → Connect → External):
+    #   for f in migrations/*.up.sql; do psql "<external-url>" -v ON_ERROR_STOP=1 -f "$f"; done
+    # ON A PAID PLAN, restore automatic migrations by adding back:
+    #   preDeployCommand: "sh -c 'for f in $(ls /app/migrations/*.up.sql | sort); do echo applying $f; psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f \"$f\"; done'"
 
     envVars:
       # Wired automatically from the managed database above.
