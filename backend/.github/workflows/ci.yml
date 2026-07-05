@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main, backend-bootstrap]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: build · vet · test · coverage
+    runs-on: ubuntu-latest
+
+    # Postgres for the DB-backed store and httpapi suites. Without a database
+    # those suites skip; in CI we want them to actually run.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: coffeemug_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/coffeemug_test?sslmode=disable
+      # Regression floor, not a target. The correctness-critical layer
+      # (internal/domain) is 100% covered; this gate just prevents backsliding.
+      COVERAGE_MIN: "40.0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Track the latest 1.22.x patch (CLAUDE.md §5 pins Go 1.22+); the
+          # patch release carries the stdlib security fixes govulncheck wants.
+          go-version: "1.22"
+          check-latest: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Apply migrations
+        run: |
+          for f in $(ls migrations/*.up.sql | sort); do
+            echo "applying $f"
+            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      - name: Test (serial, with coverage)
+        run: go test -p 1 -covermode=atomic -coverprofile=cover.out ./...
+
+      - name: Enforce coverage floor
+        run: |
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "total coverage: ${total}% (floor ${COVERAGE_MIN}%)"
+          awk -v t="$total" -v min="$COVERAGE_MIN" 'BEGIN { exit (t+0 < min+0) ? 1 : 0 }' \
+            || { echo "::error::coverage ${total}% is below the ${COVERAGE_MIN}% floor"; exit 1; }
+
+  vuln:
+    name: govulncheck (dependency scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          check-latest: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan
+        run: govulncheck ./...

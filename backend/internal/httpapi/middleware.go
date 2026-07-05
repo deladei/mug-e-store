@@ -106,6 +106,24 @@ func (s *Server) cors(next http.Handler) http.Handler {
 	})
 }
 
+// securityHeaders sets defensive response headers on every reply. This is a
+// JSON API that serves no HTML and loads no sub-resources, so the policy is
+// deliberately strict: nothing may be framed, sniffed, or treated as a document.
+// HSTS is always sent — browsers ignore it over plaintext, and in production the
+// service sits behind a TLS-terminating proxy, so it takes effect there.
+func (s *Server) securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		h.Set("Cross-Origin-Resource-Policy", "same-site")
+		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // statusRecorder captures the response status for logging.
 type statusRecorder struct {
 	http.ResponseWriter

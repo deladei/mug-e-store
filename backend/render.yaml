@@ -1,0 +1,67 @@
+# Render Blueprint for the Coffee Mug Shop backend.
+# https://render.com/docs/blueprint-spec
+#
+# Deploy: in the Render dashboard → New → Blueprint → pick this repo. Render reads
+# this file, provisions the Postgres database and the Docker web service, wires
+# DATABASE_URL between them, and generates JWT_SECRET. You then set the two
+# dashboard-only secrets (PAYSTACK_SECRET_KEY, FRONTEND_ORIGIN) and deploy.
+#
+# Money is integer pesewas; payment truth comes only from the Paystack webhook.
+
+databases:
+  - name: coffeemug-db
+    databaseName: coffeemug
+    user: coffeemug
+    plan: free          # NOTE: Render's FREE Postgres EXPIRES after ~90 days and
+                        # is then suspended. For anything real, use `basic-256mb`
+                        # (or higher) so the database does not disappear.
+    region: oregon
+
+services:
+  - type: web
+    name: coffeemug-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon       # must match the database region
+    plan: free           # NOTE: free web services sleep after inactivity and
+                        # cannot run preDeployCommand (see below). Use `starter`
+                        # for an always-on instance + automatic migrations.
+    healthCheckPath: /api/v1/healthz
+    # Off on purpose: deploys are triggered by the CI-gated Deploy workflow
+    # (.github/workflows/deploy.yml) via a Render Deploy Hook, so production only
+    # ever ships a commit whose tests passed. Flip to true to let Render
+    # auto-deploy on every push instead (then disable the Deploy workflow).
+    autoDeploy: false
+
+    # Apply migrations before each deploy goes live. preDeployCommand runs in the
+    # built image (which ships psql + /app/migrations) with the service's env.
+    # AVAILABLE ON PAID PLANS ONLY — on the free plan, delete this line and run
+    # the same loop once from the Render Shell after the first deploy.
+    preDeployCommand: "sh -c 'for f in $(ls /app/migrations/*.up.sql | sort); do echo applying $f; psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f \"$f\"; done'"
+
+    envVars:
+      # Wired automatically from the managed database above.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: coffeemug-db
+          property: connectionString
+
+      # Generated once by Render and kept stable across deploys.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Dashboard-only secrets — never stored in the blueprint. Set them in the
+      # Render UI (Environment tab). sync:false keeps Render from clearing them
+      # on each blueprint apply.
+      - key: PAYSTACK_SECRET_KEY   # sk_test_... for staging, sk_live_... for prod
+        sync: false
+      - key: FRONTEND_ORIGIN       # e.g. https://coffeemug.vercel.app
+        sync: false
+
+      # Non-secret configuration.
+      - key: PAYSTACK_BASE_URL
+        value: https://api.paystack.co
+      - key: DELIVERY_FEE_PESEWAS
+        value: "1000"              # GHS 10.00
+      # PORT is intentionally omitted: Render injects it and the app listens on
+      # whatever $PORT it is given (config defaults to 8080 only when unset).

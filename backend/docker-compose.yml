@@ -1,0 +1,66 @@
+# Local one-command stack: Postgres, a one-shot migrate, a one-shot seed, then
+# the API. Bring it up with `docker compose up --build`; the API is on :8080 and
+# answers GET /api/v1/healthz once the DB is migrated.
+#
+# These are DEV-ONLY values. Production sets real secrets out of band (and a real
+# Paystack key); never reuse JWT_SECRET or the DB password below.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coffeemug
+      POSTGRES_PASSWORD: coffeemug
+      POSTGRES_DB: coffeemug
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coffeemug -d coffeemug"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: apply every up migration in order, then exit.
+  migrate:
+    build: .
+    environment:
+      DATABASE_URL: postgres://coffeemug:coffeemug@db:5432/coffeemug?sslmode=disable
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'for f in /app/migrations/*.up.sql; do echo "applying $$f"; psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$$f" || exit 1; done'
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  # One-shot: load the demo menu + admin/staff accounts, then exit.
+  seed:
+    build: .
+    environment:
+      DATABASE_URL: postgres://coffeemug:coffeemug@db:5432/coffeemug?sslmode=disable
+    command: ["/app/seed"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgres://coffeemug:coffeemug@db:5432/coffeemug?sslmode=disable
+      JWT_SECRET: dev-only-change-me-please-use-a-long-random-string
+      PAYSTACK_SECRET_KEY: sk_test_placeholder
+      PAYSTACK_BASE_URL: https://api.paystack.co
+      FRONTEND_ORIGIN: http://localhost:3000
+      DELIVERY_FEE_PESEWAS: "1000"
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

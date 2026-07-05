@@ -1,0 +1,21 @@
+# Keep the build context small and never ship secrets or local artifacts.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+/bin
+*.test
+*.out
+coverage.*
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Not needed inside the image (the binaries + migrations are all that ship).
+docs
+*.md
+Dockerfile
+.dockerignore
+docker-compose.yml
