@@ -61,6 +61,10 @@ services:
       # Non-secret configuration.
       - key: PAYSTACK_BASE_URL
         value: https://api.paystack.co
+      # The Vercel frontend and this API live on different domains, so the
+      # refresh cookie must be SameSite=None; Secure to survive cross-origin.
+      - key: COOKIE_SECURE
+        value: "true"
       - key: DELIVERY_FEE_PESEWAS
         value: "1000"              # GHS 10.00
       # PORT is intentionally omitted: Render injects it and the app listens on

@@ -101,6 +101,32 @@ func TestLoad_MissingOneRequired(t *testing.T) {
 	}
 }
 
+func TestLoad_CookieSecure(t *testing.T) {
+	// Unset defaults to false (local dev over plain HTTP).
+	cfg, err := Load(envMap(fullEnv()))
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.CookieSecure {
+		t.Error("CookieSecure = true with COOKIE_SECURE unset, want false")
+	}
+
+	env := fullEnv()
+	env["COOKIE_SECURE"] = "true"
+	cfg, err = Load(envMap(env))
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if !cfg.CookieSecure {
+		t.Error("CookieSecure = false with COOKIE_SECURE=true, want true")
+	}
+
+	env["COOKIE_SECURE"] = "yes-please"
+	if _, err := Load(envMap(env)); err == nil {
+		t.Error("Load() with COOKIE_SECURE=\"yes-please\" error = nil, want error")
+	}
+}
+
 func TestLoad_BadDeliveryFee(t *testing.T) {
 	for _, bad := range []string{"abc", "-100", "12.5"} {
 		env := fullEnv()

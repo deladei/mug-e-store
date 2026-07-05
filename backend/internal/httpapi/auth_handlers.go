@@ -355,9 +355,11 @@ func (s *Server) setRefreshCookie(w http.ResponseWriter, value string, expires t
 		Path:     "/api/v1/auth",
 		Expires:  expires,
 		HttpOnly: true,
-		// Lax/!Secure suits same-site local dev; prod cross-origin switches to
-		// SameSite=None; Secure (Session 5 / deploy).
-		SameSite: http.SameSiteLaxMode,
+		// Lax/!Secure suits same-site local dev; COOKIE_SECURE=true switches to
+		// SameSite=None; Secure, without which the browser drops the cookie
+		// when the frontend and the API live on different domains.
+		SameSite: s.cookieSameSite(),
+		Secure:   s.cfg.CookieSecure,
 	})
 }
 
@@ -368,8 +370,18 @@ func (s *Server) clearRefreshCookie(w http.ResponseWriter) {
 		Path:     "/api/v1/auth",
 		MaxAge:   -1,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: s.cookieSameSite(),
+		Secure:   s.cfg.CookieSecure,
 	})
+}
+
+// cookieSameSite pairs None with Secure: SameSite=None is only valid on a
+// Secure cookie, so the two attributes must flip together.
+func (s *Server) cookieSameSite() http.SameSite {
+	if s.cfg.CookieSecure {
+		return http.SameSiteNoneMode
+	}
+	return http.SameSiteLaxMode
 }
 
 // serverError logs an unexpected error and returns a generic 500 (no internals

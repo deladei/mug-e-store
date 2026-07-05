@@ -28,6 +28,11 @@ type Config struct {
 	Port               string
 	DeliveryFeePesewas int64
 	FrontendOrigin     string
+	// CookieSecure switches the refresh cookie to SameSite=None; Secure so it
+	// survives a cross-origin deployment (frontend and API on different
+	// domains). Off by default: same-site local dev runs over plain HTTP, where
+	// a Secure cookie would never be stored.
+	CookieSecure bool
 }
 
 // Load builds a Config from getenv (os.Getenv in production, a stub in tests).
@@ -64,6 +69,12 @@ func Load(getenv func(string) string) (*Config, error) {
 	}
 	cfg.DeliveryFeePesewas = fee
 
+	secure, err := parseCookieSecure(getenv("COOKIE_SECURE"))
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.CookieSecure = secure
+
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("invalid configuration: %s", strings.Join(problems, "; "))
 	}
@@ -87,6 +98,20 @@ func parseDeliveryFee(raw string) (int64, error) {
 	}
 	if v < 0 {
 		return defaultDeliveryFeePesewas, fmt.Errorf("DELIVERY_FEE_PESEWAS must not be negative, got %d", v)
+	}
+	return v, nil
+}
+
+// parseCookieSecure resolves COOKIE_SECURE: empty means false (local dev); a
+// set value must be a valid boolean ("true"/"false"/"1"/"0", per
+// strconv.ParseBool).
+func parseCookieSecure(raw string) (bool, error) {
+	if raw == "" {
+		return false, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("COOKIE_SECURE must be a boolean, got %q", raw)
 	}
 	return v, nil
 }
