@@ -91,8 +91,15 @@ api.interceptors.response.use(
       _retry?: boolean;
     };
 
+    // A 401 from an /auth/* endpoint is a real answer (bad credentials, no
+    // session) — never try to refresh for it. In particular, letting the
+    // /auth/refresh call itself re-enter this handler would push it into the
+    // refresh queue that only its own completion can drain: a deadlock that
+    // hangs every subsequent request on the page.
+    const isAuthEndpoint = (originalRequest?.url ?? "").includes("/auth/");
+
     // Only attempt refresh on 401, and only once per request
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         // Another refresh is already in flight — queue this request
         return new Promise((resolve, reject) => {
@@ -110,9 +117,13 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        // The refresh cookie travels automatically (withCredentials: true)
-        const { data } = await api.post<{ access_token: string }>(
-          "/auth/refresh"
+        // The refresh cookie travels automatically (withCredentials: true).
+        // Use the bare axios module — not `api` — so this call bypasses the
+        // interceptors and cannot recurse into this handler.
+        const { data } = await axios.post<{ access_token: string }>(
+          `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
+          undefined,
+          { withCredentials: true }
         );
         const newToken = data.access_token;
         tokenStore.set(newToken);
@@ -127,9 +138,12 @@ api.interceptors.response.use(
       } catch (refreshError) {
         // Refresh failed — session is truly over
         processQueue(refreshError, null);
+        // Only bounce to login when a live session actually expired.
+        // Anonymous visitors (no access token) just get the rejection —
+        // redirecting them would yank people off public pages.
+        const hadSession = tokenStore.get() !== null;
         tokenStore.clear();
-        // Redirect to login — works in both App Router and Pages Router
-        if (typeof window !== "undefined") {
+        if (hadSession && typeof window !== "undefined") {
           window.location.href = "/auth";
         }
         return Promise.reject(refreshError);

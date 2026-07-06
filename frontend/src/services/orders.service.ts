@@ -28,9 +28,10 @@ export const ordersService = {
   },
 
   getOrderHistory2: async (id: string): Promise<OrderHistoryEntry[]> => {
-    const { data } = await api.get<OrderHistoryEntry[]>(
+    // Backend wraps the timeline: { history: [...] }
+    const { data } = await api.get<{ history: OrderHistoryEntry[] }>(
       `/admin/orders/${id}/history`
     );
-    return data;
+    return data.history ?? [];
   },
 };

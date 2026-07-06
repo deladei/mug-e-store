@@ -174,7 +174,7 @@ function ProfileContent() {
                       {LEDGER_LABELS[entry.reason]}
                     </p>
                     <p className="text-[10px] text-stone-400 dark:text-stone-500 font-mono">
-                      #{entry.order_id.slice(-8).toUpperCase()}
+                      #{String(entry.order_id).slice(-8).toUpperCase()}
                     </p>
                   </div>
                   <p

@@ -46,7 +46,9 @@ export const adminService = {
 
   // ── Items ──────────────────────────────────────────────────────────────────
   getItems: async (): Promise<MenuItem[]> => {
-    const { data } = await api.get<MenuItem[]>("/admin/items");
+    // There is no GET /admin/items route — the public /items endpoint
+    // returns unavailable items too when called with a staff/admin token.
+    const { data } = await api.get<MenuItem[]>("/items");
     return data;
   },
 

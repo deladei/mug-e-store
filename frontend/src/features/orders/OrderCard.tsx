@@ -37,7 +37,7 @@ export function OrderCard({ order }: OrderCardProps) {
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-xs text-stone-400 dark:text-stone-500 font-mono">
-              #{order.id.slice(-8).toUpperCase()}
+              #{String(order.id).slice(-8).toUpperCase()}
             </p>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
               {formattedDate}

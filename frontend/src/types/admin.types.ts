@@ -15,14 +15,14 @@ export interface UpdateCategoryPayload {
 // ─── Item management ─────────────────────────────────────────────────────────
 
 export interface CreateItemPayload {
-  category_id: string;
+  category_id: number; // backend decodes into an int64 — must be a JSON number
   name: string;
   description: string;
   image_url: string;
 }
 
 export interface UpdateItemPayload {
-  category_id?: string;
+  category_id?: number; // backend decodes into an int64 — must be a JSON number
   name?: string;
   description?: string;
   image_url?: string;

@@ -164,7 +164,8 @@ function ItemRow({
       adminService.updateItem(item.id, {
         name: editName,
         description: editDescription,
-        category_id: editCategoryId,
+        // Select inputs yield strings; the backend expects a numeric id
+        category_id: Number(editCategoryId),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-items"] });
@@ -355,7 +356,8 @@ function AddItemForm({
       adminService.createItem({
         name,
         description,
-        category_id: categoryId,
+        // Select inputs yield strings; the backend expects a numeric id
+        category_id: Number(categoryId),
         image_url: imageUrl,
       }),
     onSuccess: () => {
@@ -370,7 +372,7 @@ function AddItemForm({
   });
 
   const canAdd =
-    name.trim().length > 0 && categoryId.length > 0;
+    name.trim().length > 0 && String(categoryId).length > 0;
 
   return (
     <Card>

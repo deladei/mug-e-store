@@ -82,7 +82,7 @@ export function OrderQueueCard({ order, onAdvanced }: OrderQueueCardProps) {
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-xs font-mono font-bold text-stone-700 dark:text-stone-300">
-                  #{order.id.slice(-6).toUpperCase()}
+                  #{String(order.id).slice(-6).toUpperCase()}
                 </p>
                 {isNew && (
                   <motion.span

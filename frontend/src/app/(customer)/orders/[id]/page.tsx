@@ -120,7 +120,7 @@ function OrderTrackingContent() {
       {/* Order number + date */}
       <div>
         <p className="text-xs text-stone-400 dark:text-stone-500 font-mono">
-          Order #{order.id.slice(-8).toUpperCase()}
+          Order #{String(order.id).slice(-8).toUpperCase()}
         </p>
         <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
           {formattedDate}
