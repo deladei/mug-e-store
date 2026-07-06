@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { authService } from "@/services/auth.service";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -19,7 +19,9 @@ import {
 import { ROUTES } from "@/constants/routes";
 import axios from "axios";
 
-export default function ResetPasswordPage() {
+// useSearchParams() must live under a Suspense boundary or `next build`
+// fails prerendering this page (missing-suspense-with-csr-bailout).
+function ResetPasswordForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token") ?? "";
@@ -108,5 +110,12 @@ export default function ResetPasswordPage() {
         </form>
       </div>
     </div>
+  );
+}
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }
