@@ -2,9 +2,10 @@
 
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { RefreshCw, ArrowLeft, MapPin, Package } from "lucide-react";
+import { RefreshCw, ArrowLeft, MapPin, Package, CreditCard } from "lucide-react";
 import { useLiveOrder } from "@/features/orders/useLiveOrder";
 import { OrderStatusStepper } from "@/features/orders/OrderStatusStepper";
 import { Button } from "@/components/ui/Button";
@@ -14,11 +15,37 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { formatMoney } from "@/utils";
 import { ROUTES } from "@/constants/routes";
+import {
+  openPaystackPopup,
+  getPaymentRetry,
+  clearPaymentRetry,
+  PaymentRetry,
+} from "@/lib/paystack";
 
 function OrderTrackingContent() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { order, isLoading, error } = useLiveOrder(id);
+
+  // If checkout stashed payment codes for this order (popup cancelled), offer
+  // "Pay now". Lazy initializer: getPaymentRetry returns null during SSR
+  // (no sessionStorage), and the button can't render before the order loads,
+  // so hydration never sees it.
+  const [retry] = useState<PaymentRetry | null>(() => getPaymentRetry(id));
+
+  const handlePayNow = async () => {
+    if (!retry) return;
+    try {
+      await openPaystackPopup(retry.access_code, {
+        // Payment truth arrives via the webhook; SSE flips the status here.
+        onSuccess: () => clearPaymentRetry(id),
+        onError: () => window.location.assign(retry.authorization_url),
+      });
+    } catch {
+      // SDK failed to load — fall back to Paystack's hosted page.
+      window.location.assign(retry.authorization_url);
+    }
+  };
 
   // ── Error state ────────────────────────────────────────────────────────────
   if (error) {
@@ -245,6 +272,12 @@ function OrderTrackingContent() {
       </Card>
 
       {/* Actions */}
+      {order.status === "pending_payment" && retry && (
+        <Button fullWidth size="lg" onClick={handlePayNow} className="gap-2">
+          <CreditCard size={16} />
+          Pay now
+        </Button>
+      )}
       {order.status === "completed" && (
         <Button
           fullWidth

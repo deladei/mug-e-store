@@ -25,6 +25,11 @@ import {
   CheckoutFormValues,
 } from "@/lib/validators/checkout.schema";
 import { ROUTES } from "@/constants/routes";
+import {
+  openPaystackPopup,
+  stashPaymentRetry,
+  clearPaymentRetry,
+} from "@/lib/paystack";
 import { cn } from "@/utils";
 import axios from "axios";
 
@@ -72,7 +77,7 @@ function SummaryRow({
 
 function CheckoutContent() {
   const router = useRouter();
-  const { cart, fetchCart, clearLocalCart } = useCart();
+  const { cart, fetchCart, clearLocalCart, openCart } = useCart();
   const { user } = useAuth();
 
   const [isDelivery, setIsDelivery] = useState(false);
@@ -137,15 +142,42 @@ function CheckoutContent() {
         points_to_redeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
       });
 
-      // Clear local cart state — the order is placed
-      clearLocalCart();
-
-      // Redirect to Paystack hosted page
-      // In mock mode this URL won't actually work — we go to order tracking instead
-      if (response.authorization_url.includes("mock")) {
+      // The backend cleared the cart server-side; clearing the local copy
+      // waits until we leave, so the empty-cart branch doesn't flash behind
+      // the popup.
+      const goToOrder = () => {
+        clearLocalCart();
         router.push(ROUTES.ORDER(response.order.id));
-      } else {
-        window.location.href = response.authorization_url;
+      };
+
+      // If the customer cancels the popup, the order page offers "Pay now"
+      // for the rest of this session.
+      stashPaymentRetry(String(response.order.id), {
+        access_code: response.access_code,
+        authorization_url: response.authorization_url,
+      });
+
+      // Collect payment in an on-page Paystack popup. `paid` still comes only
+      // from Paystack's webhook — the order page tracks that live over SSE, so
+      // onSuccess just navigates there. If the inline SDK can't load, fall back
+      // to Paystack's hosted page.
+      try {
+        await openPaystackPopup(response.access_code, {
+          onSuccess: () => {
+            clearPaymentRetry(String(response.order.id));
+            goToOrder();
+          },
+          onCancel: () => {
+            toast.error("Payment cancelled — your order is awaiting payment");
+            goToOrder();
+          },
+          onError: () => {
+            window.location.assign(response.authorization_url);
+          },
+        });
+      } catch {
+        // SDK failed to load — use the hosted checkout page instead.
+        window.location.assign(response.authorization_url);
       }
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -155,7 +187,7 @@ function CheckoutContent() {
           router.push(ROUTES.HOME);
         } else if (code === API_ERROR_CODES.UNAVAILABLE) {
           toast.error("Some items are unavailable — check your cart");
-          router.push(ROUTES.CART);
+          openCart();
         } else if (code === API_ERROR_CODES.INSUFFICIENT_POINTS) {
           toast.error("Not enough loyalty points");
           setPointsToRedeem(0);
@@ -336,8 +368,8 @@ function CheckoutContent() {
         <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
           <Info size={15} className="text-blue-500 shrink-0 mt-0.5" />
           <p className="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
-            You'll be redirected to Paystack's secure payment page to complete
-            your order. You'll return here after payment.
+            A secure Paystack payment window opens right here on this page. Your
+            order confirms automatically once payment clears.
           </p>
         </div>
 

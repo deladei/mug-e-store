@@ -22,7 +22,7 @@ export default function ItemDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { isAuthenticated } = useAuth();
-  const { addItem } = useCart();
+  const { addItem, openCart } = useCart();
 
   const [selectedVariant, setSelectedVariant] = useState<Variant | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -56,7 +56,8 @@ export default function ItemDetailPage() {
       quantity,
     });
     toast.success(`${item?.name} added to cart`);
-    router.back();
+    // Show the cart right away — drawer keeps them on the menu
+    openCart();
   } catch (err) {
     console.error("ADD TO CART ERROR:", err);
     toast.error("Could not add item — please try again");

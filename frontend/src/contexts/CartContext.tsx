@@ -17,6 +17,10 @@ interface CartContextValue {
   cart: Cart | null;
   isLoading: boolean;
   totalItems: number;
+  // Drawer visibility — the cart is a right-side slide-in panel, not a page.
+  isOpen: boolean;
+  openCart: () => void;
+  closeCart: () => void;
   fetchCart: () => Promise<void>;
   addItem: (payload: AddToCartPayload) => Promise<void>;
   updateLine: (lineId: string, quantity: number) => Promise<void>;
@@ -29,7 +33,11 @@ const CartContext = createContext<CartContextValue | null>(null);
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<Cart | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const { isAuthenticated } = useAuth();
+
+  const openCart = useCallback(() => setIsOpen(true), []);
+  const closeCart = useCallback(() => setIsOpen(false), []);
 
   const fetchCart = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -76,6 +84,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         cart,
         isLoading,
         totalItems,
+        isOpen,
+        openCart,
+        closeCart,
         fetchCart,
         addItem,
         updateLine,

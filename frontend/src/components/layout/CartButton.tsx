@@ -3,18 +3,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { ShoppingBag } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/utils";
-import { ROUTES } from "@/constants/routes";
 
 export function CartButton() {
-  const { totalItems, fetchCart } = useCart();
+  const { totalItems, fetchCart, openCart } = useCart();
   const { isAuthenticated } = useAuth();
-  const router = useRouter();
 
   // Fetch cart on mount when authenticated
   useEffect(() => {
@@ -25,7 +22,7 @@ export function CartButton() {
 
   return (
     <button
-      onClick={() => router.push(ROUTES.CART)}
+      onClick={openCart}
       aria-label={`Cart — ${totalItems} item${totalItems !== 1 ? "s" : ""}`}
       className={cn(
         "relative flex items-center justify-center",

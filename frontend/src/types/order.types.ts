@@ -36,7 +36,10 @@ export interface Order {
 // What POST /checkout returns
 export interface CheckoutResponse {
   order: Order;
+  // Paystack's hosted checkout page — full-page redirect fallback.
   authorization_url: string;
+  // Drives the on-page Paystack inline popup (popup.resumeTransaction).
+  access_code: string;
 }
 
 export interface CheckoutPayload {
